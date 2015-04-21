@@ -3,6 +3,15 @@
 # Mobile Tools for Java (J2ME)
 .mtj.tmp/
 
+# Word documents
+*.odt
+
+#javalib package files
+javalib/*
+
+#java autosave files
+*.java~
+
 # Package Files #
 *.jar
 *.war
