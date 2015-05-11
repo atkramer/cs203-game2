@@ -20,6 +20,14 @@ class Point extends Posn {
     public String toString() {
 	return "(" + x + "," + y + ")";
     }
+    
+    //For use with testers
+    public boolean isPath(Point pt, Cell[][] cells) {
+	SearchPoint sp = new SearchPoint(this, null);
+	SearchList closed = new EmptySearchList();
+	SearchList open = closed.add(sp);
+	return sp.isPath(pt, cells, open, closed);
+    }
 }
 
 //Point list to be used later for passing hallway locations to dungeons in tree
@@ -409,10 +417,14 @@ class Player implements Collidable{
     public WorldImage draw() {
 	//Effect: returns a FromFileImage created using the
 	//        Player's imgName
-	if(direction == Direction.LEFT || direction == Direction.RIGHT) {
-	    return new FromFileImage(this.position, "images/player-turned.png");
+	if(direction == Direction.LEFT) {
+	    return new FromFileImage(this.position, "images/player-left.png");
+	} else if (direction == Direction.RIGHT) {
+	    return new FromFileImage(this.position, "images/player-right.png");
+	} else if (direction == Direction.UP) {
+	    return new FromFileImage(this.position, "images/player-up.png");
 	} else {
-	    return new FromFileImage(this.position, "images/player-straight.png");
+	    return new FromFileImage(this.position, "images/player-down.png");
 	}
 	//return new DiskImage(position, Cell.CELL_WIDTH/2, Color.BLUE);
     }
@@ -641,6 +653,38 @@ class SearchPoint {
 	    tempOpen = tempOpen.remove(this);
 	    SearchList tempClosed = closed.add(this);
 	    return open.getClosest(pt).findPath(pt, cells, tempOpen, tempClosed);
+	}
+    }
+    
+    //For use with testers
+    public boolean isPath(Point pt, Cell[][] cells, SearchList open, SearchList closed) {
+	if(closed.pointMember(pt)) {
+	    return true;
+	} else { 
+	    int x = this.pt.x;
+	    int y = this.pt.y;
+	    SearchList tempOpen = open;
+	    //Check if each adjacent cell exists and is open, if so, add it to the open list of points to be checked
+	    if(x-1 >= 0 &&
+	       cells[x-1][y].isOpenHuh() &&
+	       !closed.pointMember(this.pt))
+		tempOpen = tempOpen.add(new SearchPoint(new Point(x-1,y), this));
+	    if(x+1 < cells.length &&
+	       cells[x+1][y].isOpenHuh() &&
+	       !closed.pointMember(this.pt))
+		tempOpen = tempOpen.add(new SearchPoint(new Point(x+1,y), this));
+	    if(y-1 >= 0 &&
+	       cells[x][y-1].isOpenHuh() &&
+	       !closed.pointMember(this.pt))
+		tempOpen = tempOpen.add(new SearchPoint(new Point(x,y-1), this));
+	    if(y+1 < cells[0].length &&
+	       cells[x][y+1].isOpenHuh() &&
+	       !closed.pointMember(this.pt))
+		tempOpen = tempOpen.add(new SearchPoint(new Point(x,y+1), this));
+	    //remove the point currently being checked from the open list and add it to the closed
+	    tempOpen = tempOpen.remove(this);
+	    SearchList tempClosed = closed.add(this);
+	    return open.getClosest(pt).isPath(pt, cells, tempOpen, tempClosed);
 	}
     }
 
@@ -881,7 +925,6 @@ class Enemy implements Collidable {
     public Enemy chase(Player p, Cell[][] cells) {
 	SearchPoint start = new SearchPoint(location, null);
 	PointList path = start.findPath(p.getLocation(), cells, new EmptySearchList().add(start), new EmptySearchList());
-	System.out.println("current path is:\n" + path);
 	return this.move(path.first());
     }
 
@@ -980,6 +1023,11 @@ interface EnemyList {
     EnemyList attacked(Player p, Cell[][] cells);
     boolean isCollision(Player p);
     Enemy whichCollision(Player p);
+    //Methods to be used with tester functions in CrawlTests
+    boolean isEnemyAt(Point pt);
+    boolean validCells(Cell[][] cells);
+    PointList getLocations();
+    //
     WorldImage draw();
 }
 
@@ -1024,6 +1072,18 @@ class EmptyEnemyList implements EnemyList{
 
     public Enemy whichCollision(Player p) {
 	throw new EmptyListException("No enemy was colliding with the player");
+    }
+
+    public boolean isEnemyAt(Point pt) {
+	return false;
+    }
+
+    public boolean validCells(Cell[][] cells) {
+	return true;
+    }
+
+    public PointList getLocations() {
+	return new EmptyPtList();
     }
 
     public WorldImage draw() {
@@ -1099,6 +1159,20 @@ class ConsEnemyList implements EnemyList{
 	    return first;
 	else
 	    return rest.whichCollision(p);
+    }
+
+    public boolean isEnemyAt(Point pt) {
+	return first.getLocation().equals(pt) ||
+	    rest.isEnemyAt(pt);
+    }
+
+    public boolean validCells(Cell[][] cells) {
+	return Crawl.validCell(first.getLocation(), cells) &&
+	    rest.validCells(cells);
+    }
+
+    public PointList getLocations() {
+	return new ConsPtList(first.getLocation(), rest.getLocations());
     }
 
     public WorldImage draw() {
@@ -1296,13 +1370,16 @@ interface EquipList {
     public EquipList rest();
     public Carryable get(int place);
     public EquipList add(Carryable item);
-    public EquipList remove(Carryable Item);
+    public EquipList remove(Carryable item);
     public boolean isItemAt(Point pt);
     public Carryable getItemAt(Point pt);
     public EquipList removeItemAt(Point pt);
     public WorldImage drawInWorld();
     public WorldImage drawInInventorySlot(int slot);
     public WorldImage drawInInventory();
+    //Methods to be used with testers in CrawlTests
+    public boolean validCells(Cell[][] cells);
+    public boolean isItem(Carryable item);
 }
 
 class EmptyListException extends RuntimeException {
@@ -1361,6 +1438,14 @@ class EmptyList implements EquipList{
 
     public WorldImage drawInInventory() {
 	return new RectangleImage(new Posn(0,0), 0, 0, Color.BLACK);
+    }
+
+    public boolean validCells(Cell[][] cells) {
+	return true;
+    }
+
+    public boolean isItem(Carryable item) {
+	return false;
     }
 }
 
@@ -1436,6 +1521,15 @@ class List implements EquipList{
 
     public WorldImage drawInInventory() {
 	return this.drawInInventorySlot(0);
+    }
+
+    public boolean validCells(Cell[][] cells) {
+	return Crawl.validCell(first.getLocation(), cells) &&
+	    rest.validCells(cells);
+    }
+
+    public boolean isItem(Carryable item) {
+	return first.equals(item) || rest.isItem(item);
     }
 }
 
@@ -1930,6 +2024,38 @@ public class Crawl extends World{
 	this.state = state;
     }
 
+    public int getLevel() {
+	return this.level;
+    }
+
+    public Player getPlayer() {
+	return this.player;
+    }
+
+    public Cell[][] getFloor() {
+	return this.floor;
+    }
+
+    public EnemyList getEnemies() {
+	return this.enemies;
+    }
+
+    public EquipList getItems() {
+	return this.items;
+    }
+
+    public int getSelectedItem() {
+	return this.selectedItem;
+    }
+
+    public Point getExit() {
+	return this.exit;
+    }
+
+    public State getState() {
+	return this.state;
+    }
+
     public Crawl(int level, Player player, Cell[][] floor,
 		 EnemyList enemies, Effect effect, EquipList items, int selectedItem,
 		 Point exit, State state) {
@@ -2046,14 +2172,6 @@ public class Crawl extends World{
 	return new Point(x,y);
     }
 
-    public boolean isCollision() {
-	return enemies.isCollision(player);
-    }
-
-    public boolean willBeCollision() {
-	return enemies.chase(player, floor).isCollision(player);
-    }
-
     public Crawl nextLevel() {
 	if(level+1 < WIN_LEVEL) {
 	    Cell[][] nextFloor = new BaseDungeon(new Point(0,0),
@@ -2076,6 +2194,10 @@ public class Crawl extends World{
 				      new EmptyList().add(Weapon.sword(new Point(0,0))), Weapon.sword(new Point(0,0)));
 	return new Crawl(0, newPlayer, newFloor, generateEnemies(newFloor, NUM_ENEMIES),
 			 generateItems(newFloor, NUM_ITEMS), 0, findBottomRight(newFloor), State.GAME);
+    }
+
+    public boolean isCollision() {
+	return enemies.isCollision(player);
     }
 
     public Crawl onTick() {
@@ -2264,6 +2386,150 @@ public class Crawl extends World{
     }
 
     public static void main(String[] args) {
+
+	
+	
+	Dungeon gameDungeon = new BaseDungeon(new Point(0,0), 80, 80, new EmptyPtList()).generate(10,10);
+	Cell[][] floor = gameDungeon.getCells();
+        Player p = new Player(findTopLeft(floor), Direction.RIGHT, 50, 50, 50, 50, "",
+			      new EmptyList().add(Weapon.sword(new Point(0,0))), Weapon.sword(new Point(0,0)));
+	EnemyList es =  generateEnemies(floor, NUM_ENEMIES);
+	EquipList items = generateItems(floor, NUM_ITEMS);
+	Point exit = findBottomRight(floor);  
+	//Crawl game = newGame();
+	Crawl game = new Crawl(0, p, floor, es, items, 0, exit, State.GAME);
+	game.bigBang(WINDOW_WIDTH*Cell.CELL_WIDTH, WINDOW_HEIGHT*Cell.CELL_HEIGHT, 0.5);
+    }
+}
+
+class CrawlTests {
+
+
+
+    //---//---// INVARIANT TESTS //---//---//
+
+    //If the game is in the GAME state and an enemy is next to a player,
+    //on the next tick, the player should be in a different position, and have less
+    //health than before
+    public static boolean testPlayerHit(Crawl game) {
+	Point testPointLeft = new Point(game.getPlayer().getLocation().x - 1, game.getPlayer().getLocation().y);
+	Point testPointRight = new Point(game.getPlayer().getLocation().x + 1, game.getPlayer().getLocation().y );
+	Point testPointUp = new Point(game.getPlayer().getLocation().x, game.getPlayer().getLocation().y - 1);
+	Point testPointDown = new Point(game.getPlayer().getLocation().x, game.getPlayer().getLocation().y + 1);
+	if(game.getState() == State.GAME && game.onTick().getState() == State.GAME &&
+	   (game.getEnemies().isEnemyAt(testPointLeft) || game.getEnemies().isEnemyAt(testPointRight) ||
+	    game.getEnemies().isEnemyAt(testPointUp) || game.getEnemies().isEnemyAt(testPointDown))) {
+	    return !(game.getPlayer().getLocation().equals(game.onTick().getPlayer().getLocation())) &&
+		game.getPlayer().getHealth() > game.onTick().getPlayer().getHealth();
+	} else {
+	    return true;
+	}
+    }
+
+    //No enemy, player, item, or exit should ever be in a cell that is not open
+    public static boolean testValidCells(Crawl game) {
+	boolean valid = true;
+	for(int i = 0; i < game.getFloor().length; i++) {
+	    for(int j = 0; j < game.getFloor()[0].length; j++) {
+		if(!(Crawl.validCell(game.getPlayer().getLocation(), game.getFloor()) &&
+		     Crawl.validCell(game.getExit(), game.getFloor()) &&
+		     game.getEnemies().validCells(game.getFloor()) &&
+		     game.getItems().validCells(game.getFloor()))) {
+		    valid = false;
+		}
+	    }
+	}
+	return valid;
+    }
+
+    //If the game is in the GAME state and the player has 0 health, the game
+    //should be in the GAMEOVER state on the following tick
+    public static boolean testGameOver(Crawl game) {
+	if(game.getState() == State.GAME && game.getPlayer().getHealth() <= 0) {
+	    return game.onTick().getState() == State.GAMEOVER;
+	} else {
+	    return true;
+	} 
+    }
+
+    //The player should never have more than 10 items in their inventory
+    public static boolean testInventoryLimit(Crawl game) {
+	return game.getPlayer().getInventory().size() <= 10;
+    }
+
+    //If the player is standing on top of an item, and their inventory is NOT full,
+    //on the next tick, that item should be in the player's inventory, and should no
+    //longer be at that point in the world
+    public static boolean testItemPickup(Crawl game) {
+	if(game.getItems().isItemAt(game.getPlayer().getLocation()) && game.getPlayer().getInventory().size() < 10) {
+	    return !(game.onTick().getItems().isItemAt(game.getPlayer().getLocation())) &&
+		(game.onTick().getPlayer().getInventory().isItem(game.getItems().getItemAt(game.getPlayer().getLocation())));
+	} else {
+	    return true;
+	}
+    }
+
+    public static Point getRandomOpen(Cell[][] cells) {
+	Point pt = null;
+	int x;
+	int y;
+	while(pt == null) {
+	    x = (int) (Math.random()*cells.length);
+	    y = (int) (Math.random()*cells[0].length);
+	    if(cells[x][y].isOpenHuh()) {
+		pt = new Point(x,y);
+	    }
+	}
+	return pt;
+    }
+
+    //There should exist a path between any two arbitrarily chosen open points
+    //in the dungeon
+    public static boolean testDungeonComplete(Crawl game) {
+	Point pt1 = getRandomOpen(game.getFloor());
+	Point pt2 = getRandomOpen(game.getFloor());
+	return pt1.isPath(pt2, game.getFloor());
+    }
+    
+    public static String getRandomKey() {
+	int choose = (int) (Math.random()*11);
+	if(choose == 0) {
+	    return "w";
+	} else if(choose == 1) {
+	    return "a";
+	} else if(choose == 2) {
+	    return "s";
+	} else if(choose == 3) {
+	    return "d";
+	} else if(choose == 4) {
+	    return "up";
+	} else if(choose == 5) {
+	    return "right";
+	} else if(choose == 6) {
+	    return "up";
+	} else if(choose == 7) {
+	    return "down";
+	} else if(choose == 8) {
+	    return " ";
+	} else if(choose == 9) {
+	    return "e";
+	} else {
+	    return "n";
+	}
+    }
+
+    public static String[] genRandomInputs(int n) {
+	String[] inputs =  new String[n];
+	for(int i = 0; i< inputs.length; i++) {
+	    inputs[i] = getRandomKey();
+	}
+	return inputs;
+    }
+    
+    public static void main(String[] args) {
+
+	//---//---// SINGLE CASE TESTS //---//---//
+    
 	PointList mt = new EmptyPtList();
 	PointList listy = new ConsPtList(new Point(1, 1), (new ConsPtList(new Point(2,2), (new ConsPtList(new Point(3,3), mt)))));
 	System.out.println("listy.rightOf(2) should be ((2,2) ((3,3) )), is:\n" + listy.rightOf(2));
@@ -2294,19 +2560,48 @@ public class Crawl extends World{
 	System.out.println("\n");
 	Dungeon testDungeon = new BaseDungeon(new Point(0,0), 40, 30, new EmptyPtList());
 	testDungeon = testDungeon.generate(6, 6);
-        System.out.println(testDungeon + "\n");
+	System.out.println(testDungeon + "\n");
+
+	//---//---// INVARIANT TESTS //---//---//
 	
-	
-	Dungeon gameDungeon = new BaseDungeon(new Point(0,0), 80, 80, new EmptyPtList()).generate(10,10);
-	Cell[][] floor = gameDungeon.getCells();
-        Player p = new Player(findTopLeft(floor), Direction.RIGHT, 50, 50, 50, 50, "",
-			      new EmptyList().add(Weapon.sword(new Point(0,0))), Weapon.sword(new Point(0,0)));
-	EnemyList es =  generateEnemies(floor, NUM_ENEMIES);
-	EquipList items = generateItems(floor, NUM_ITEMS);
-	Point exit = findBottomRight(floor);  
-	//Crawl game = newGame();
-	Crawl game = new Crawl(14, p, floor, es, items, 0, exit, State.GAME);
-	game.bigBang(WINDOW_WIDTH*Cell.CELL_WIDTH, WINDOW_HEIGHT*Cell.CELL_HEIGHT, 0.5);
+	Crawl testGame = Crawl.newGame();
+	int times = 3000;
+	String[] inputs = genRandomInputs(times);
+	int testsFailed = 0;
+	if(!testDungeonComplete(testGame)) {
+	    System.out.println("Path could not be found between two points");
+	    testsFailed++;
+	}
+	for(int i = 0; i < times*2; i++) {
+	    if(i % 2 == 0) {
+		testGame = testGame.onKeyEvent(inputs[i/2]);
+	    } else {
+		testGame = testGame.onTick();
+	    }
+	    if(!testPlayerHit(testGame)) {
+		System.out.println("Enemies are not correctly attacking the player\nenemies are at:\n" +
+				   testGame.getEnemies().getLocations() + "\nplayer is at: "
+				   + testGame.getPlayer().getLocation());
+		testsFailed++;
+	    }
+	    if(!testValidCells(testGame)) {
+		System.out.println("Something is occupying an \"off\" cell");
+		testsFailed++;
+	    }
+	    if(!testGameOver(testGame)) {
+		System.out.println("Game is not ending when the player has no life");
+		testsFailed++;
+	    }
+	    if(!testInventoryLimit(testGame)) {
+		System.out.println("Player has too many items in their inventory");
+		testsFailed++;
+	    }
+	    if(!testItemPickup(testGame)) {
+		System.out.println("Item is not being picked up when it should be");
+		testsFailed++;
+	    }
+	}
+	System.out.println(testsFailed + " tests failed");
     }
 }
 
