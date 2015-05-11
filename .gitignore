@@ -3,8 +3,12 @@
 # Mobile Tools for Java (J2ME)
 .mtj.tmp/
 
-# Word documents
+# non-code documents
 *.odt
+*.pdf
+
+#images
+*.png
 
 #javalib package files
 javalib/*
